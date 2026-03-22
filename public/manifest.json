@@ -1,0 +1,38 @@
+{
+  "name": "Playr",
+  "short_name": "Playr",
+  "description": "Score any sport live. Build your identity. Find your game.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#F5F5F0",
+  "theme_color": "#0D1B2A",
+  "orientation": "portrait",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "Go to your Playr dashboard"
+    },
+    {
+      "name": "My Matches",
+      "url": "/matches",
+      "description": "View your match history"
+    }
+  ]
+}
