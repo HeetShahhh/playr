@@ -1,161 +1,160 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Download, Clock } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { Match, MatchEvent } from '@/types';
-import { LiveDot } from '@/components/ui/LiveDot';
-import { ShareButton } from '@/components/ui/ShareButton';
-import { getSportAccentColor, timeAgo } from '@/lib/utils';
+import { supabase } from '@/lib/supabase/client';
+
+interface MatchData {
+  id:           string;
+  share_token:  string;
+  status:       'live' | 'completed' | string;
+  sport_slug:   string;
+  sport_name:   string;
+  sport_accent: string;
+  player_a:     string;
+  player_b:     string;
+  score_a:      number;
+  score_b:      number;
+  sets_a:       number;
+  sets_b:       number;
+  current_set:  number;
+  set_results:  Array<{ score_a: number; score_b: number; winner: 'a' | 'b' }>;
+  winner_name?: string;
+  created_at:   string;
+}
+
+const SPORT_ACCENTS: Record<string, string> = {
+  badminton:  '#00A86B',
+  pickleball: '#FF6B35',
+  tennis:     '#E8A020',
+  cricket:    '#1A5CFF',
+  basketball: '#E83038',
+  squash:     '#8B5CF6',
+};
+
+function timeAgo(createdAt: string) {
+  const secs = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ago`;
+}
 
 export default function SpectatorPage() {
   const { token } = useParams<{ token: string }>();
-  const [match, setMatch] = useState<Match | null>(null);
-  const [lastEvent, setLastEvent] = useState<MatchEvent | null>(null);
-  const [matchTime, setMatchTime] = useState('0:00');
+  const [match, setMatch] = useState<MatchData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [prevScoreA, setPrevScoreA] = useState(0);
-  const [prevScoreB, setPrevScoreB] = useState(0);
-  const [animateA, setAnimateA] = useState(false);
-  const [animateB, setAnimateB] = useState(false);
+  const [lastPointName, setLastPointName] = useState<string | null>(null);
+  const [lastPointTime, setLastPointTime] = useState<string | null>(null);
+  // Score slide animation state
+  const [slideA, setSlideA] = useState<'in' | 'out' | null>(null);
+  const [slideB, setSlideB] = useState<'in' | 'out' | null>(null);
+  const matchIdRef = useRef<string | null>(null);
+
+  const normalize = (raw: any): MatchData => ({
+    id:           raw.id,
+    share_token:  raw.share_token,
+    status:       raw.status,
+    sport_slug:   raw.sport?.slug ?? 'badminton',
+    sport_name:   raw.sport?.name ?? 'Match',
+    sport_accent: SPORT_ACCENTS[raw.sport?.slug] ?? '#00A86B',
+    player_a:     raw.player_name_a ?? raw.player_a?.display_name ?? 'Player A',
+    player_b:     raw.player_name_b ?? raw.player_b?.display_name ?? 'Player B',
+    score_a:      raw.score_a,
+    score_b:      raw.score_b,
+    sets_a:       raw.sets_a,
+    sets_b:       raw.sets_b,
+    current_set:  raw.current_set,
+    set_results:  (raw.set_results ?? []).map((r: any) => ({ score_a: r.score_a, score_b: r.score_b, winner: r.winner })),
+    created_at:   raw.created_at,
+  });
 
   useEffect(() => {
-    if (token === 'demo') {
-      setMatch({
-        id: 'demo',
-        share_token: 'demo',
-        status: 'live',
-        sport_id: '1',
-        player_a_id: 'a',
-        player_b_id: 'b',
-        score_a: 14,
-        score_b: 11,
-        sets_a: 1,
-        sets_b: 0,
-        current_set: 2,
-        created_at: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
-        sport: {
-          id: '1', name: 'Badminton', slug: 'badminton',
-          accent_color: '#00A86B', icon: '🏸', status: 'live',
-          points_per_set: 21, sets_per_match: 3,
-          win_by_margin: 2, max_cap: 30, sets_to_win: 2,
-        },
-        player_a: { id: 'a', display_name: 'Rahul S.', role: 'player', elo_rating: 1347, created_at: '' },
-        player_b: { id: 'b', display_name: 'Arjun P.', role: 'player', elo_rating: 1289, created_at: '' },
-        set_results: [{ id: '1', match_id: 'demo', set_number: 1, score_a: 21, score_b: 18, winner: 'a' }],
-      } as Match);
-      setLoading(false);
-      return;
-    }
+    if (!token) return;
 
-    loadMatch();
-  }, [token]);
-
-  const loadMatch = async () => {
-    const { data } = await supabase
+    supabase
       .from('matches')
       .select(`
         *,
         sport:sports(*),
-        player_a:user_profiles!matches_player_a_id_fkey(id, display_name, avatar_url),
-        player_b:user_profiles!matches_player_b_id_fkey(id, display_name, avatar_url),
-        set_results(*)
+        player_a:user_profiles!matches_player_a_id_fkey(display_name),
+        player_b:user_profiles!matches_player_b_id_fkey(display_name),
+        set_results(score_a, score_b, winner)
       `)
       .eq('share_token', token)
-      .single();
+      .single()
+      .then(({ data }) => {
+        if (!data) { setLoading(false); return; }
+        const m = normalize(data);
+        setMatch(m);
+        matchIdRef.current = data.id;
+        setLoading(false);
 
-    if (data) {
-      setMatch(data as Match);
-      setPrevScoreA(data.score_a);
-      setPrevScoreB(data.score_b);
-
-      // Subscribe to real-time events
-      if (data.status === 'live') {
-        subscribeToMatch(data.id);
-      }
-    }
-    setLoading(false);
-  };
-
-  const subscribeToMatch = (matchId: string) => {
-    const channel = supabase
-      .channel(`match-${matchId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'match_events',
-          filter: `match_id=eq.${matchId}`,
-        },
-        (payload) => {
-          const event = payload.new as MatchEvent;
-          setLastEvent(event);
-
-          // Update score with animation
-          setMatch((prev) => {
-            if (!prev) return prev;
-            const updated = {
-              ...prev,
-              score_a: event.score_a_after,
-              score_b: event.score_b_after,
-            };
-
-            if (event.score_a_after > prev.score_a) {
-              setAnimateA(true);
-              setTimeout(() => setAnimateA(false), 400);
-            }
-            if (event.score_b_after > prev.score_b) {
-              setAnimateB(true);
-              setTimeout(() => setAnimateB(false), 400);
-            }
-
-            return updated;
-          });
+        // Subscribe to real-time match_events
+        if (data.status === 'live') {
+          const channel = supabase
+            .channel(`watch-${data.id}`)
+            .on('postgres_changes', {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'match_events',
+              filter: `match_id=eq.${data.id}`,
+            }, (payload) => {
+              const ev = payload.new as any;
+              setMatch((prev) => {
+                if (!prev) return prev;
+                const sideA = ev.event_type === 'point_a';
+                const sideB = ev.event_type === 'point_b';
+                if (sideA) { triggerSlide('a'); setLastPointName(prev.player_a); }
+                if (sideB) { triggerSlide('b'); setLastPointName(prev.player_b); }
+                setLastPointTime(timeAgo(ev.created_at));
+                return {
+                  ...prev,
+                  score_a: ev.score_a_after,
+                  score_b: ev.score_b_after,
+                };
+              });
+            })
+            .subscribe();
+          return () => { supabase.removeChannel(channel); };
         }
-      )
-      .subscribe();
+      });
+  }, [token]);
 
-    return () => supabase.removeChannel(channel);
+  const triggerSlide = (side: 'a' | 'b') => {
+    const setter = side === 'a' ? setSlideA : setSlideB;
+    setter('out');
+    setTimeout(() => setter('in'), 160);
+    setTimeout(() => setter(null), 320);
   };
 
-  // Match timer
-  useEffect(() => {
-    if (!match || match.status !== 'live') return;
-    const start = new Date(match.created_at).getTime();
-    const update = () => {
-      const elapsed = Math.floor((Date.now() - start) / 1000);
-      const mins = Math.floor(elapsed / 60);
-      const secs = elapsed % 60;
-      setMatchTime(`${mins}:${secs.toString().padStart(2, '0')}`);
-    };
-    update();
-    const t = setInterval(update, 1000);
-    return () => clearInterval(t);
-  }, [match]);
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-navy flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-chalk/30 border-t-chalk rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--navy)' }}>
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!match) {
     return (
-      <div className="min-h-screen bg-chalk flex flex-col items-center justify-center p-4 text-center">
-        <span className="text-6xl mb-4 block">🏅</span>
-        <h1 className="text-xl font-bold text-navy mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center" style={{ backgroundColor: 'var(--navy)' }}>
+        <span className="text-5xl mb-4">🏅</span>
+        <h1 className="text-[22px] font-bold mb-2 text-white" style={{ fontFamily: 'var(--font-display)' }}>
           Match not found
         </h1>
-        <p className="text-muted text-sm mb-6">This link may have expired or the match was deleted.</p>
+        <p className="text-[14px] mb-6" style={{ color: 'var(--text-secondary)' }}>
+          This link may have expired or the match was deleted.
+        </p>
         <Link
           href="/"
-          className="px-6 py-3 bg-orange text-white font-semibold rounded-lg text-sm"
-          style={{ fontFamily: 'var(--font-display)' }}
+          className="px-6 font-semibold text-white rounded-lg"
+          style={{ height: '48px', lineHeight: '48px', backgroundColor: 'var(--orange)', fontFamily: 'var(--font-display)' }}
         >
           Go to Playr
         </Link>
@@ -163,188 +162,142 @@ export default function SpectatorPage() {
     );
   }
 
-  const accentColor = getSportAccentColor(match.sport);
   const isLive = match.status === 'live';
-  const isCompleted = match.status === 'completed';
+  const accent = match.sport_accent;
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col" style={{ fontFamily: 'var(--font-body)' }}>
-      {/* Header */}
-      <div
-        className="px-4 pt-5 pb-4"
-        style={{ backgroundColor: accentColor }}
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: 'var(--navy)', maxWidth: '480px', margin: '0 auto' }}
+    >
+      {/* Top bar */}
+      <header
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: '40px', backgroundColor: 'var(--navy-2)', borderBottom: '1px solid var(--border)' }}
       >
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{match.sport?.icon}</span>
-              <span
-                className="text-sm font-bold text-white uppercase tracking-wide"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                {match.sport?.name}
-              </span>
-              <span className="text-white/50 text-xs">·</span>
-              <span
-                className="text-xs text-white/60"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                Set {match.current_set} of {match.sport?.sets_per_match}
-              </span>
-            </div>
-            {isLive ? (
-              <div className="flex items-center gap-1.5">
-                <LiveDot color="lime" size="sm" />
-                <span className="text-xs font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
-                  LIVE
-                </span>
-              </div>
-            ) : isCompleted ? (
-              <span className="text-xs font-bold text-white/60 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
-                Final
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {/* Score board */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-md mx-auto w-full">
-        {/* Players + Scores */}
-        <div className="w-full flex items-center justify-between mb-6">
-          <div className="flex-1 text-center">
-            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">
-              {match.player_a?.display_name.charAt(0)}
-            </div>
-            <p
-              className="text-sm font-semibold text-white mb-4"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              {match.player_a?.display_name}
-            </p>
-            <span
-              className={`text-[72px] sm:text-[88px] font-bold text-white leading-none tabular-nums transition-transform duration-100 ${animateA ? 'scale-125' : 'scale-100'}`}
-              style={{ fontFamily: 'var(--font-mono)', display: 'block' }}
-            >
-              {match.score_a}
-            </span>
-            {/* Previous sets */}
-            <div className="mt-3 flex flex-wrap justify-center gap-1">
-              {match.set_results?.map((r) => (
-                <span
-                  key={r.id}
-                  className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/60"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {r.score_a}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="px-4 flex flex-col items-center gap-2">
-            <span className="text-white/40 text-lg font-light">vs</span>
-            {match.sets_a > 0 || match.sets_b > 0 ? (
-              <span
-                className="text-white font-bold text-xl"
-                style={{ fontFamily: 'var(--font-mono)' }}
-              >
-                {match.sets_a}–{match.sets_b}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex-1 text-center">
-            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">
-              {match.player_b?.display_name.charAt(0)}
-            </div>
-            <p
-              className="text-sm font-semibold text-white mb-4"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              {match.player_b?.display_name}
-            </p>
-            <span
-              className={`text-[72px] sm:text-[88px] font-bold text-white leading-none tabular-nums transition-transform duration-100 ${animateB ? 'scale-125' : 'scale-100'}`}
-              style={{ fontFamily: 'var(--font-mono)', display: 'block' }}
-            >
-              {match.score_b}
-            </span>
-            <div className="mt-3 flex flex-wrap justify-center gap-1">
-              {match.set_results?.map((r) => (
-                <span
-                  key={r.id}
-                  className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/60"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {r.score_b}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Match completed banner */}
-        {isCompleted && match.winner_id && (
-          <div className="w-full bg-lime/20 border border-lime/30 rounded-card p-4 text-center mb-6">
-            <p
-              className="text-lime font-bold text-lg"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              🏆 {match.winner_id === match.player_a_id
-                ? match.player_a?.display_name
-                : match.player_b?.display_name} wins!
-            </p>
-          </div>
-        )}
-
-        {/* Info bar */}
-        {isLive && (
-          <div className="w-full flex items-center justify-between text-white/50 text-xs mb-8">
-            {lastEvent && (
-              <span style={{ fontFamily: 'var(--font-body)' }}>
-                Last point: {
-                  lastEvent.event_type === 'point_a' ? match.player_a?.display_name
-                  : lastEvent.event_type === 'point_b' ? match.player_b?.display_name
-                  : lastEvent.event_type
-                }
-                {' · '}{timeAgo(lastEvent.created_at)}
-              </span>
-            )}
-            <div className="flex items-center gap-1.5 ml-auto">
-              <Clock size={12} />
-              <span style={{ fontFamily: 'var(--font-mono)' }}>{matchTime}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="w-full space-y-3">
-          {match.share_token && match.share_token !== 'demo' && (
-            <ShareButton shareToken={match.share_token} className="w-full justify-center bg-white/15 border-transparent text-white hover:bg-white/25" />
-          )}
-          <Link
-            href="/auth?mode=signup"
-            className="flex items-center justify-center gap-2 w-full py-3 border border-white/20 rounded-lg text-white/70 text-sm font-medium hover:bg-white/5 transition-colors"
-            style={{ fontFamily: 'var(--font-display)', minHeight: '48px' }}
-          >
-            <Download size={16} />
-            Join Playr free
-          </Link>
-        </div>
-
-        {/* Playr badge */}
-        <div className="mt-8 flex items-center gap-2 opacity-40">
+        <div className="flex items-center gap-2">
           <div
-            className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-black"
-            style={{ backgroundColor: '#B6F000', color: '#0D1B2A' }}
+            className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-black"
+            style={{ backgroundColor: 'var(--navy)', color: 'var(--lime)', border: '1px solid var(--lime)' }}
           >
             P▶
           </div>
-          <span className="text-xs text-white" style={{ fontFamily: 'var(--font-display)' }}>
-            Powered by Playr
+          <span className="text-[14px] font-semibold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+            Playr
           </span>
         </div>
+
+        {isLive ? (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full pulse-dot" style={{ backgroundColor: 'var(--lime)' }} />
+            <span className="text-[12px] font-semibold" style={{ color: 'var(--lime)', fontFamily: 'var(--font-display)' }}>
+              LIVE
+            </span>
+          </div>
+        ) : (
+          <span className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>
+            Final
+          </span>
+        )}
+      </header>
+
+      {/* Sport label */}
+      <div className="px-4 pt-6 pb-2 text-center">
+        <span
+          className="text-[13px] font-semibold uppercase tracking-widest"
+          style={{ color: accent, fontFamily: 'var(--font-display)' }}
+        >
+          {match.sport_name} · SET {match.current_set}
+        </span>
+      </div>
+
+      {/* Player names */}
+      <div className="flex items-center justify-between px-8 py-2">
+        <span
+          className="text-[18px] font-medium flex-1 text-center"
+          style={{ fontFamily: 'var(--font-display)', color: 'var(--text-secondary)' }}
+        >
+          {match.player_a.toUpperCase()}
+        </span>
+        <span className="text-[13px] px-2" style={{ color: 'var(--border)' }}>—</span>
+        <span
+          className="text-[18px] font-medium flex-1 text-center"
+          style={{ fontFamily: 'var(--font-display)', color: 'var(--text-secondary)' }}
+        >
+          {match.player_b.toUpperCase()}
+        </span>
+      </div>
+
+      {/* Score */}
+      <div className="flex items-center justify-center gap-8 py-4">
+        <span
+          className={slideA === 'out' ? 'score-slide-out' : slideA === 'in' ? 'score-slide-in' : ''}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '80px',
+            color: 'var(--lime)',
+            lineHeight: 1,
+            minWidth: '80px',
+            textAlign: 'center',
+            display: 'inline-block',
+          }}
+        >
+          {match.score_a}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '32px', color: 'var(--text-secondary)' }}>
+          —
+        </span>
+        <span
+          className={slideB === 'out' ? 'score-slide-out' : slideB === 'in' ? 'score-slide-in' : ''}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '80px',
+            color: 'var(--lime)',
+            lineHeight: 1,
+            minWidth: '80px',
+            textAlign: 'center',
+            display: 'inline-block',
+          }}
+        >
+          {match.score_b}
+        </span>
+      </div>
+
+      {/* Set history */}
+      {match.set_results.length > 0 && (
+        <p className="text-center text-[13px] mb-1" style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+          {match.set_results.map((s, i) => (
+            <span key={i}>{i > 0 ? '  ·  ' : ''}{s.score_a} – {s.score_b}</span>
+          ))}
+        </p>
+      )}
+
+      {/* Last point */}
+      {lastPointName && (
+        <p className="text-center text-[13px] mt-1" style={{ fontFamily: 'var(--font-body)', color: 'var(--text-secondary)' }}>
+          Last point: {lastPointName}  ·  {lastPointTime}
+        </p>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Footer */}
+      <div
+        className="px-4 pb-8 pt-4 flex flex-col gap-3"
+        style={{ borderTop: '1px solid var(--border)' }}
+      >
+        <button
+          onClick={handleShare}
+          className="w-full font-semibold rounded-lg border text-white text-[14px]"
+          style={{ height: '48px', borderColor: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-display)' }}
+        >
+          Share this match
+        </button>
+        <p className="text-center text-[13px]" style={{ fontFamily: 'var(--font-body)', color: 'var(--text-secondary)' }}>
+          Score your matches free on{' '}
+          <Link href="/" className="text-white hover:underline">Playr</Link>
+        </p>
       </div>
     </div>
   );

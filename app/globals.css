@@ -5,31 +5,34 @@
 @tailwind utilities;
 
 :root {
-  /* Brand base */
-  --color-navy: #0D1B2A;
-  --color-chalk: #F5F5F0;
-  --color-surface: #EEEEE8;
-  --color-lime: #B6F000;
+  /* V2 dark design system */
+  --navy:           #0A1628;
+  --navy-2:         #0D1B2A;
+  --navy-3:         #162237;
+  --lime:           #B6F000;
+  --orange:         #E85D1A;
+  --text-primary:   #F2F2EC;
+  --text-secondary: #8A9BB0;
+  --border:         rgba(255, 255, 255, 0.08);
+
+  /* Sport accents */
+  --badminton:  #00A86B;
+  --pickleball: #FF6B35;
+  --tennis:     #E8A020;
+  --cricket:    #1A5CFF;
+  --basketball: #E83038;
+  --squash:     #8B5CF6;
+
+  /* Legacy aliases — keep for any v1 components still referenced */
+  --color-navy:   #0D1B2A;
+  --color-chalk:  #F2F2EC;
+  --color-lime:   #B6F000;
   --color-orange: #E85D1A;
-
-  /* Sport accent colors */
-  --accent-badminton: #00A86B;
-  --accent-pickleball: #FF6B35;
-  --accent-tennis: #E8A020;
-  --accent-cricket: #1A5CFF;
-  --accent-basketball: #E83038;
-  --accent-squash: #8B5CF6;
-
-  /* Semantic */
-  --color-win: #B6F000;
-  --color-loss: #E85D1A;
-  --color-muted: #88887A;
-  --color-border: #E0E0D8;
 
   /* Typography */
   --font-display: 'DM Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-body: 'Inter', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+  --font-body:    'Inter', sans-serif;
 }
 
 * {
@@ -42,144 +45,105 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  background-color: var(--color-chalk);
-  color: var(--color-navy);
+  background-color: var(--navy);
+  color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Global max-width — mobile-first tool */
+.page-container {
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 /* Touch targets */
 button, a, [role="button"] {
   min-height: 44px;
-  min-width: 44px;
 }
 
-/* Score number utility */
-.score-mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
+/* ── Score animations ───────────────────────────────────── */
 
-/* Score tap flash animation */
-@keyframes tapFlash {
-  0% { background-color: transparent; }
-  30% { background-color: rgba(232, 93, 26, 0.3); }
-  100% { background-color: transparent; }
-}
-
-.tap-flash {
-  animation: tapFlash 150ms ease-out;
-}
-
-/* Score pop */
+/* Scale pop on score */
 @keyframes scorePop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); }
   100% { transform: scale(1); }
 }
-
 .score-pop {
   animation: scorePop 120ms ease-out;
 }
 
-/* Live pulse */
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+/* Tap half-screen flash */
+@keyframes tapFlash {
+  0%   { background-color: rgba(232, 93, 26, 0); }
+  20%  { background-color: rgba(232, 93, 26, 0.20); }
+  100% { background-color: rgba(232, 93, 26, 0); }
+}
+.tap-flash {
+  animation: tapFlash 180ms ease-out;
 }
 
-.pulse-dot {
-  animation: pulseDot 1.5s ease-in-out infinite;
+/* ── Spectator score slide transition ───────────────────── */
+@keyframes scoreSlideOut {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(-20px); opacity: 0; }
 }
+@keyframes scoreSlideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.score-slide-out { animation: scoreSlideOut 150ms ease-out forwards; }
+.score-slide-in  { animation: scoreSlideIn  150ms ease-out forwards; }
 
-/* Fade in */
+/* ── Toast ──────────────────────────────────────────────── */
+@keyframes toastIn {
+  from { transform: translateY(80px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.toast-enter { animation: toastIn 220ms ease-out; }
+
+/* ── General utility ────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
+.fade-in { animation: fadeIn 200ms ease-out; }
 
-.fade-in {
-  animation: fadeIn 200ms ease-out;
-}
-
-/* Slide up */
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
+.slide-up { animation: slideUp 280ms ease-out; }
 
-.slide-up {
-  animation: slideUp 300ms ease-out;
+/* Live pulse dot */
+@keyframes pulseDot {
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.3; }
 }
+.pulse-dot { animation: pulseDot 1.4s ease-in-out infinite; }
 
-/* Score slide transition */
-@keyframes scoreSlideOut {
-  from { transform: translateY(0); opacity: 1; }
-  to { transform: translateY(20px); opacity: 0; }
-}
-
-@keyframes scoreSlideIn {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-.score-slide-in {
-  animation: scoreSlideIn 200ms ease-out;
-}
-
-/* Toast */
-@keyframes toastIn {
-  from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-.toast-enter {
-  animation: toastIn 250ms ease-out;
-}
-
-/* Match card hover (desktop) */
-@media (hover: hover) {
-  .match-card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(13, 27, 42, 0.12);
-    transition: transform 150ms ease, box-shadow 150ms ease;
-  }
-}
-
-/* Skeleton shimmer */
+/* Skeleton */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
-
 .skeleton {
-  background: linear-gradient(90deg, #E0E0D8 25%, #EEEEE8 50%, #E0E0D8 75%);
+  background: linear-gradient(90deg, var(--navy-2) 25%, var(--navy-3) 50%, var(--navy-2) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 6px;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 2px;
-}
-
-/* Bottom nav safe area */
-.bottom-nav {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* Focus styles */
+/* Focus ring */
 *:focus-visible {
-  outline: 2px solid var(--color-orange);
+  outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
